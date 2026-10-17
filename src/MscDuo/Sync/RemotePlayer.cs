@@ -91,7 +91,11 @@ namespace MscDuo.Sync
 
             Position = position;
             if (SaveTransfer.InMenu) return;
-            avatar.Apply(position + displayOffset, yaw, pitch);
+            avatar.SetSkin((b.Flags & PlayerStateMessage.Player2Flag) != 0 ? 2 : 1);
+            var seat = b.Vehicle != 0 ? CarSync.RootOf(b.Vehicle) : null;
+            if (seat != null) avatar.Sit(seat, seat.TransformPoint(b.Head), CarSync.IsBike(b.Vehicle), (b.Flags & PlayerStateMessage.PassengerFlag) != 0);
+            else avatar.Apply(position + displayOffset, yaw, pitch);
+            avatar.Express(b.Gestures, b.Voice, b.VoiceCount);
         }
 
         internal void Dispose()

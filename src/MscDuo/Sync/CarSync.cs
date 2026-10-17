@@ -141,6 +141,7 @@ namespace MscDuo.Sync
 
         static bool Inside(CarLink link)
         {
+            if (Passenger.Active) return false;
             if (link.Owned) return CurrentVehicle.Current == link.Index;
             if (player != null && player.IsChildOf(link.Root)) return true;
             if (link.CurrentName == null) return false;
@@ -180,6 +181,37 @@ namespace MscDuo.Sync
             roots.Clear();
             foreach (var pair in FindRoots()) roots[pair.Key] = pair.Value;
             return roots.TryGetValue(name, out go) ? go : null;
+        }
+
+        internal static void Resolve(float now)
+        {
+            foreach (var link in links) link.Resolve(now);
+        }
+
+        internal static int Driven()
+        {
+            foreach (var link in links)
+                if (link.Ready && Inside(link)) return link.Index;
+            return 0;
+        }
+
+        internal static int IndexOf(Transform t)
+        {
+            foreach (var link in links)
+                if (link.Root != null && t.IsChildOf(link.Root)) return link.Index;
+            return 0;
+        }
+
+        internal static Transform RootOf(int index)
+        {
+            var link = Find((byte)index);
+            return link != null ? link.Root : null;
+        }
+
+        internal static bool IsBike(int index)
+        {
+            var link = Find((byte)index);
+            return link != null && link.Label.StartsWith("jonnez");
         }
 
         static CarLink Find(byte index)
