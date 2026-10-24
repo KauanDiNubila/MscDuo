@@ -56,9 +56,9 @@ namespace MscDuo.Sync
         internal static Vector3 FingerOffset = new Vector3(-0.34f, 0f, 0f);
         internal static Vector3 FingerRotation = new Vector3(0f, 0f, -90f);
         internal static float FingerScale = 1.6f;
-        internal static Vector3 WatchOffset = new Vector3(-0.22f, 0f, 0f);
-        internal static Vector3 WatchRotation = new Vector3(90f, 0f, 0f);
-        internal static float WatchScale = 1f;
+        internal static Vector3 WatchOffset = new Vector3(-0.23f, 0f, 0f);
+        internal static Vector3 WatchRotation = new Vector3(0f, 180f, 180f);
+        internal static float WatchScale = 0.8f;
 
         static readonly string[][] GestureSources =
         {

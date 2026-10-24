@@ -18,6 +18,8 @@ namespace MscDuo.Sync
         static PlayMakerFSM color;
         static PlayMakerFSM rotation;
         static PlayMakerFSM weather;
+        static Transform needleHour;
+        static Transform needleMinute;
         static float nextSend;
 
         internal static int? ClockTime
@@ -35,6 +37,9 @@ namespace MscDuo.Sync
             color = Fsm("SUN", "Color");
             rotation = color != null && color.transform.parent != null ? Find(color.transform.parent.gameObject, "Rotation") : null;
             weather = Fsm("Clouds", "Weather");
+            var clock = Fsm("Clock", "Time", "SuomiClock");
+            needleHour = clock != null ? Find(clock.transform.parent, "NeedleHour") : null;
+            needleMinute = clock != null ? Find(clock.transform.parent, "NeedleMinute") : null;
             var blocks = 0;
             if (color != null)
             {
@@ -65,7 +70,7 @@ namespace MscDuo.Sync
                 FsmTools.EnsureLoaded(weather);
                 if (weather.Fsm.GetState("Set cloud") != null) weather.AddGlobalTransition(WeatherEvent, "Set cloud");
             }
-            ModConsole.Print($"<color=orange>[MSC Duo]</color> hora e clima: relógio {(color != null ? "ok" : "não encontrado")} ({blocks} blocos), sol {(rotation != null ? "ok" : "não encontrado")}, nuvens {(weather != null ? "ok" : "não encontradas")}.");
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> hora e clima: relógio {(color != null ? "ok" : "não encontrado")} ({blocks} blocos), ponteiros {(needleHour != null && needleMinute != null ? "ok" : "não encontrados")}, sol {(rotation != null ? "ok" : "não encontrado")}, nuvens {(weather != null ? "ok" : "não encontradas")}.");
         }
 
         internal static void Tick(float now, bool isHost, bool connected, Action<Action<BinaryWriter>> send)
@@ -124,6 +129,8 @@ namespace MscDuo.Sync
             w.Write(rotation != null ? Float(rotation, "Rotation") : -1f);
             var day = FsmVariables.GlobalVariables.FindFsmInt("GlobalDay");
             w.Write(day != null ? day.Value : 0);
+            w.Write(needleHour != null ? needleHour.localEulerAngles.y : -1f);
+            w.Write(needleMinute != null ? needleMinute.localEulerAngles.y : -1f);
             w.Write(weather != null);
             if (weather == null) return;
             w.Write(Int(weather, "WeatherType"));
@@ -142,6 +149,8 @@ namespace MscDuo.Sync
             var time = r.ReadInt32();
             var sunRotation = r.ReadSingle();
             var day = r.ReadInt32();
+            var hourAngle = r.ReadSingle();
+            var minuteAngle = r.ReadSingle();
             var hasWeather = r.ReadBoolean();
 
             if (color != null && Array.IndexOf(Blocks, block) >= 0)
@@ -156,6 +165,8 @@ namespace MscDuo.Sync
             if (rotation != null && sunRotation >= 0f) SetFloat(rotation, "Rotation", sunRotation);
             var globalDay = FsmVariables.GlobalVariables.FindFsmInt("GlobalDay");
             if (globalDay != null && day > 0) globalDay.Value = day;
+            Turn(needleHour, hourAngle);
+            Turn(needleMinute, minuteAngle);
 
             if (!hasWeather) return;
             var type = r.ReadInt32();
@@ -177,6 +188,26 @@ namespace MscDuo.Sync
             SetInt(weather, "WeatherCloudID", cloud);
             SetFloat(weather, "ThunderForce", thunder);
             weather.SendEvent(WeatherEvent);
+        }
+
+        static void Turn(Transform needle, float angle)
+        {
+            if (needle == null || angle < 0f) return;
+            var euler = needle.localEulerAngles;
+            euler.y = angle;
+            needle.localEulerAngles = euler;
+        }
+
+        static Transform Find(Transform t, string name)
+        {
+            if (t == null) return null;
+            if (t.name == name) return t;
+            foreach (Transform child in t)
+            {
+                var found = Find(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         static float Float(PlayMakerFSM fsm, string name)
@@ -210,10 +241,11 @@ namespace MscDuo.Sync
             return null;
         }
 
-        static PlayMakerFSM Fsm(string objectName, string fsmName)
+        static PlayMakerFSM Fsm(string objectName, string fsmName, string parentName = null)
         {
             foreach (var fsm in Resources.FindObjectsOfTypeAll<PlayMakerFSM>())
-                if (fsm != null && fsm.gameObject.name == objectName && fsm.FsmName == fsmName && fsm.gameObject.hideFlags == HideFlags.None) return fsm;
+                if (fsm != null && fsm.gameObject.name == objectName && fsm.FsmName == fsmName && fsm.gameObject.hideFlags == HideFlags.None &&
+                    (parentName == null || fsm.transform.parent != null && fsm.transform.parent.name == parentName)) return fsm;
             return null;
         }
     }
