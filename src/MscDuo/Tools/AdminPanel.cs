@@ -17,7 +17,7 @@ namespace MscDuo.Tools
 
         static readonly string[] Needs = { "PlayerHunger", "PlayerThirst", "PlayerFatigue", "PlayerStress", "PlayerUrine", "PlayerDirtiness" };
         static readonly string[] NeedLabels = { "Fome", "Sede", "Cansaço", "Estresse", "Mijo", "Sujeira" };
-        static readonly string[] Tabs = { "Sessão", "Jogador", "Veículos", "Teleporte", "Mundo", "Inspetor" };
+        static readonly string[] Tabs = { "Sessão", "Jogador", "Veículos", "Teleporte", "Mundo", "Ferramentas" };
         static readonly float[] MoveSteps = { 0.01f, 0.1f, 1f };
         static readonly float[] TurnSteps = { 1f, 5f, 15f, 90f };
         static readonly string[] Blocks = { "06-08", "10-12", "14-16", "18-20", "22-00", "02-04" };
@@ -49,7 +49,7 @@ namespace MscDuo.Tools
         static string moneyText = "";
         static string joinText = "";
         static string status = "";
-        static Rect window = new Rect(60f, 60f, 430f, 520f);
+        static Rect window = new Rect(60f, 60f, 470f, 540f);
         static Vector2 scroll;
         static FsmBool inMenu;
         static bool menuWas;
@@ -476,6 +476,20 @@ namespace MscDuo.Tools
 
         static void InspectorTab()
         {
+            GUILayout.Label("Diagnóstico (o resultado sai no console e em dumps)");
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Medir FPS")) { Toggle(); Run(new FpsCommand()); }
+            if (GUILayout.Button("O que estou mirando")) Run(new LookCommand());
+            if (GUILayout.Button("Veículos perto")) Run(new DiagCommand());
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Comparar Satsumas")) Run(new CarCommand());
+            if (GUILayout.Button("Dinamômetro")) Run(new DynoProbeCommand());
+            if (GUILayout.Button("Exportar cena (F8)")) { SceneDumper.DumpDefault(); status = "exportação iniciada, veja o console"; }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(8f);
+            GUILayout.Label("Inspetor");
             GUILayout.Label("Mire no objeto com o painel fechado, abra o painel e clique em Pegar.");
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Pegar o que estou mirando")) Pick();
@@ -535,6 +549,19 @@ namespace MscDuo.Tools
                 status = "dados copiados e escritos no console";
             }
             GUILayout.EndHorizontal();
+        }
+
+        static void Run(ConsoleCommand command)
+        {
+            try
+            {
+                command.Run(new string[0]);
+                status = command.Name + " rodou, veja o console";
+            }
+            catch (System.Exception e)
+            {
+                status = command.Name + " falhou: " + e.Message;
+            }
         }
 
         static void Pick()
