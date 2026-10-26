@@ -22,6 +22,14 @@ namespace MscDuo.Tools
         static readonly float[] TurnSteps = { 1f, 5f, 15f, 90f };
         static readonly string[] Blocks = { "06-08", "10-12", "14-16", "18-20", "22-00", "02-04" };
         static readonly string[] BlockLabels = { "6h", "10h", "14h", "18h", "22h", "2h" };
+        static readonly string[][] VehicleNames =
+        {
+            new[] { "jonnez", "Moto Jonnez" }, new[] { "hayosiko", "Van Hayosiko" }, new[] { "gifu", "Caminhão Gifu" },
+            new[] { "kekmet", "Trator Kekmet" }, new[] { "flatbed", "Carreta do trator" }, new[] { "ferndale", "Ferndale" },
+            new[] { "rco_ruscko", "Ruscko" }, new[] { "boat", "Barco" }, new[] { "combine", "Colheitadeira" },
+            new[] { "ram1500", "Dodge Ram" }, new[] { "campershell", "Capota da Ram" },
+        };
+        static readonly Dictionary<Transform, FsmFloat[]> tanks = new Dictionary<Transform, FsmFloat[]>();
         static readonly string[] WeatherLabels = { "Sol", "Chuva", "Tempestade" };
 
         static readonly bool[] frozen = new bool[Needs.Length];
@@ -261,19 +269,84 @@ namespace MscDuo.Tools
         {
             var player = Player();
             if (player == null) { GUILayout.Label("Jogador não encontrado."); return; }
-            var current = CurrentVehicle(player);
-            GUILayout.Label("Ir até leva você para o lado do veículo; trazer coloca o veículo ao seu lado.");
-            if (current != null && GUILayout.Button("Encher o tanque do veículo atual")) Refuel(current);
-            foreach (var link in CarSync.Links)
+            GUILayout.Label("Ir leva você até o veículo; Trazer coloca o veículo ao seu lado.");
+            var groups = new[] { new List<CarSync.CarLink>(), new List<CarSync.CarLink>(), new List<CarSync.CarLink>(), new List<CarSync.CarLink>() };
+            foreach (var link in CarSync.Links) groups[GroupOf(link)].Add(link);
+            var me = PlayerContext.Active;
+            var titles = new[] { "Jogador 1" + (me == 1 ? " (você)" : ""), "Jogador 2" + (me == 2 ? " (você)" : ""), "Mods", "Outros" };
+            for (int g = 0; g < groups.Length; g++)
             {
-                if (!link.Ready || link.Root == null) continue;
-                var distance = (link.Root.position - player.position).magnitude;
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"{link.Label}  ({distance:0} m)", GUILayout.Width(200f));
-                if (GUILayout.Button("Ir até")) GoTo(player, link.Root);
-                if (GUILayout.Button("Trazer")) Bring(player, link);
-                GUILayout.EndHorizontal();
+                if (groups[g].Count == 0) continue;
+                GUILayout.Space(4f);
+                GUILayout.Label(titles[g]);
+                foreach (var link in groups[g]) VehicleRow(player, link);
             }
+        }
+
+        static int GroupOf(CarSync.CarLink link)
+        {
+            if (link.Index == 1) return 0;
+            if (link.Index == 2) return 1;
+            if (link.RootName == null) return 3;
+            if (link.RootName.EndsWith(VehicleCloner.Suffix)) return 1;
+            foreach (var spec in VehicleCloner.Specs) if (spec.Root == link.RootName) return 0;
+            if (ExtraVehicles.Roots.Contains(link.RootName)) return 2;
+            return 3;
+        }
+
+        static string NameOf(CarSync.CarLink link)
+        {
+            var label = link.Label.ToLowerInvariant();
+            if (label.StartsWith("satsuma")) return "Satsuma";
+            foreach (var pair in VehicleNames)
+                if (label.StartsWith(pair[0])) return pair[1];
+            return link.Label;
+        }
+
+        static void VehicleRow(Transform player, CarSync.CarLink link)
+        {
+            GUILayout.BeginHorizontal();
+            if (!link.Ready || link.Root == null)
+            {
+                GUILayout.Label(NameOf(link) + "  (não está no jogo agora)");
+                GUILayout.EndHorizontal();
+                return;
+            }
+            var distance = (link.Root.position - player.position).magnitude;
+            GUILayout.Label($"{NameOf(link)}  {distance:0} m", GUILayout.Width(175f));
+            var tank = TankOf(link);
+            GUILayout.Label(tank.Length == 0 ? "-" : tank[1] != null && tank[1].Value > 0f ? $"{tank[0].Value:0}/{tank[1].Value:0} L" : $"{tank[0].Value:0} L", GUILayout.Width(55f));
+            if (GUILayout.Button("Ir")) GoTo(player, link.Root);
+            if (GUILayout.Button("Trazer")) Bring(player, link);
+            GUI.enabled = tank.Length > 0;
+            if (GUILayout.Button("Encher")) Refuel(link, tank);
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+        }
+
+        static FsmFloat[] TankOf(CarSync.CarLink link)
+        {
+            FsmFloat[] tank;
+            if (tanks.TryGetValue(link.Root, out tank)) return tank;
+            tank = new FsmFloat[0];
+            var roots = new List<GameObject> { link.Root.gameObject };
+            if (link.Index == 1) roots.Add(SatsumaCloner.OriginalDatabase);
+            if (link.Index == 2) roots.Add(SatsumaCloner.Database);
+            foreach (var root in roots)
+            {
+                if (root == null || tank.Length > 0) continue;
+                foreach (var fsm in root.GetComponentsInChildren<PlayMakerFSM>(true))
+                {
+                    if (fsm.FsmName != "Data") continue;
+                    var level = fsm.FsmVariables.FindFsmFloat("FuelLevel");
+                    if (level == null) continue;
+                    var max = fsm.FsmVariables.FindFsmFloat("MaxCapacity") ?? fsm.FsmVariables.FindFsmFloat("FuelCapacity") ?? fsm.FsmVariables.FindFsmFloat("Capacity");
+                    tank = new[] { level, max };
+                    break;
+                }
+            }
+            tanks[link.Root] = tank;
+            return tank;
         }
 
         static void GoTo(Transform player, Transform target)
@@ -304,19 +377,11 @@ namespace MscDuo.Tools
             status = $"{link.Label} trazido para perto de você";
         }
 
-        static void Refuel(Transform vehicle)
+        static void Refuel(CarSync.CarLink link, FsmFloat[] tank)
         {
-            var filled = 0;
-            foreach (var fsm in vehicle.GetComponentsInChildren<PlayMakerFSM>(true))
-            {
-                if (fsm.FsmName != "Data") continue;
-                var level = fsm.FsmVariables.FindFsmFloat("FuelLevel");
-                if (level == null) continue;
-                var max = fsm.FsmVariables.FindFsmFloat("MaxCapacity") ?? fsm.FsmVariables.FindFsmFloat("FuelCapacity") ?? fsm.FsmVariables.FindFsmFloat("Capacity");
-                level.Value = max != null && max.Value > 0f ? max.Value : Mathf.Max(level.Value, FuelFallback);
-                filled++;
-            }
-            status = filled > 0 ? $"tanque cheio ({filled})" : "tanque não encontrado nesse veículo";
+            if (tank.Length == 0) { status = "tanque não encontrado nesse veículo"; return; }
+            tank[0].Value = tank[1] != null && tank[1].Value > 0f ? tank[1].Value : Mathf.Max(tank[0].Value, FuelFallback);
+            status = $"{NameOf(link)}: tanque cheio ({tank[0].Value:0} L)";
         }
 
         static void TeleportTab()
@@ -480,20 +545,6 @@ namespace MscDuo.Tools
         {
             var current = FsmVariables.GlobalVariables.FindFsmString("PlayerCurrentVehicle");
             return current != null && !string.IsNullOrEmpty(current.Value);
-        }
-
-        static Transform CurrentVehicle(Transform player)
-        {
-            if (!InVehicle(player)) return null;
-            Transform best = null;
-            var bestDistance = float.MaxValue;
-            foreach (var link in CarSync.Links)
-            {
-                if (!link.Ready || link.Root == null) continue;
-                var d = (link.Root.position - player.position).sqrMagnitude;
-                if (d < bestDistance) { bestDistance = d; best = link.Root; }
-            }
-            return best;
         }
     }
 }
