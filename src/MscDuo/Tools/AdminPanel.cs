@@ -4,6 +4,7 @@ using HutongGames.PlayMaker;
 using MSCLoader;
 using MscDuo.Duplication;
 using MscDuo.Net;
+using MscDuo.Player;
 using MscDuo.Sync;
 using UnityEngine;
 
@@ -16,7 +17,7 @@ namespace MscDuo.Tools
 
         static readonly string[] Needs = { "PlayerHunger", "PlayerThirst", "PlayerFatigue", "PlayerStress", "PlayerUrine", "PlayerDirtiness" };
         static readonly string[] NeedLabels = { "Fome", "Sede", "Cansaço", "Estresse", "Mijo", "Sujeira" };
-        static readonly string[] Tabs = { "Jogador", "Veículos", "Teleporte", "Mundo", "Inspetor" };
+        static readonly string[] Tabs = { "Sessão", "Jogador", "Veículos", "Teleporte", "Mundo", "Inspetor" };
         static readonly float[] MoveSteps = { 0.01f, 0.1f, 1f };
         static readonly float[] TurnSteps = { 1f, 5f, 15f, 90f };
         static readonly string[] Blocks = { "06-08", "10-12", "14-16", "18-20", "22-00", "02-04" };
@@ -31,6 +32,7 @@ namespace MscDuo.Tools
         static bool open;
         static int tab;
         static string moneyText = "";
+        static string joinText = "";
         static string status = "";
         static Rect window = new Rect(60f, 60f, 430f, 520f);
         static Vector2 scroll;
@@ -120,16 +122,77 @@ namespace MscDuo.Tools
             scroll = GUILayout.BeginScrollView(scroll);
             switch (tab)
             {
-                case 0: PlayerTab(); break;
-                case 1: VehiclesTab(); break;
-                case 2: TeleportTab(); break;
-                case 3: WorldTab(); break;
-                case 4: InspectorTab(); break;
+                case 0: SessionTab(); break;
+                case 1: PlayerTab(); break;
+                case 2: VehiclesTab(); break;
+                case 3: TeleportTab(); break;
+                case 4: WorldTab(); break;
+                case 5: InspectorTab(); break;
             }
             GUILayout.EndScrollView();
             if (status.Length > 0) GUILayout.Label(status);
-            GUILayout.Label("Feche com a mesma tecla que abriu.");
+            GUILayout.Label("Feche no X ou com a mesma tecla que abriu.");
+            if (GUI.Button(new Rect(window.width - 26f, 1f, 22f, 16f), "X")) Toggle();
             GUI.DragWindow();
+        }
+
+        static void SessionTab()
+        {
+            var session = NetSession.Current;
+            var steam = session != null ? session.Transport as SteamTransport : null;
+            GUILayout.Label("Conexão");
+            if (session == null) GUILayout.Label("Sem sessão. Crie uma e convide seu amigo, ou cole o código dele e entre.");
+            else
+            {
+                GUILayout.Label(session.Connected ? "Estado: conectado com " + PeerNames(session, steam) : "Estado: " + session.Transport.Name + ", esperando o outro jogador");
+                GUILayout.Label($"{(session.Transport.IsHost ? "anfitrião" : "convidado")} · jogador {PlayerContext.Active} · protocolo {Protocol.Version}");
+                foreach (var peer in session.Peers)
+                {
+                    var p = peer.Player;
+                    var loss = p.Received + p.Lost > 0 ? 100f * p.Lost / (p.Received + p.Lost) : 0f;
+                    GUILayout.Label($"ping {peer.RttMs:0} ms · perda {loss:0.#}% · atraso {p.InterpolationDelay * 1000f:0} ms");
+                }
+                if (session.Connected) GUILayout.Label("objetos: " + ItemRegistry.Status);
+            }
+
+            GUILayout.Space(8f);
+            GUILayout.Label("Jogar junto");
+            GUILayout.BeginHorizontal();
+            GUI.enabled = session == null;
+            if (GUILayout.Button("Criar sessão")) { NetCommand.Host(); status = "criando sessão; quando aparecer o código, convide seu amigo"; }
+            GUI.enabled = steam != null && steam.IsHost;
+            if (GUILayout.Button("Convidar amigo (Steam)")) status = NetCommand.Invite() ? "convite da Steam aberto" : "crie a sessão antes";
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+            if (steam != null && steam.IsHost && steam.Lobby != 0)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Código: " + steam.Lobby);
+                if (GUILayout.Button("Copiar", GUILayout.Width(80f))) { CopyToClipboard(steam.Lobby.ToString()); status = "código copiado"; }
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.BeginHorizontal();
+            joinText = GUILayout.TextField(joinText, GUILayout.Width(180f));
+            if (GUILayout.Button("Colar")) joinText = Clipboard().Trim();
+            GUI.enabled = session == null;
+            if (GUILayout.Button("Entrar com código")) status = NetCommand.Join(joinText) ? "entrando na sessão do amigo" : "código inválido: são só números";
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(8f);
+            GUILayout.BeginHorizontal();
+            GUI.enabled = session != null;
+            if (GUILayout.Button("Encerrar sessão")) { NetSession.Stop(); status = "sessão encerrada"; }
+            GUI.enabled = true;
+            if (GUILayout.Button(NetHud.Visible ? "Esconder HUD de rede" : "Mostrar HUD de rede")) NetHud.Visible = !NetHud.Visible;
+            GUILayout.EndHorizontal();
+        }
+
+        static string PeerNames(NetSession session, SteamTransport steam)
+        {
+            var names = new List<string>();
+            foreach (var peer in session.Peers) names.Add(steam != null ? SteamTransport.PersonaName(peer.Id) : "jogador " + peer.Id);
+            return names.Count > 0 ? string.Join(", ", names.ToArray()) : "?";
         }
 
         static void PlayerTab()
@@ -397,6 +460,12 @@ namespace MscDuo.Tools
         {
             var property = typeof(GUIUtility).GetProperty("systemCopyBuffer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
             if (property != null) property.SetValue(null, text, null);
+        }
+
+        static string Clipboard()
+        {
+            var property = typeof(GUIUtility).GetProperty("systemCopyBuffer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            return property != null ? property.GetValue(null, null) as string ?? "" : "";
         }
 
         static string PathOf(Transform t) => t.parent == null ? t.name : PathOf(t.parent) + "/" + t.name;

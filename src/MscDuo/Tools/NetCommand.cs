@@ -17,19 +17,13 @@ namespace MscDuo.Tools
             switch (args[0])
             {
                 case "host":
-                    Guarded(() => NetSession.Start(SteamTransport.Host(), Vector3.zero));
-                    NetHud.Visible = true;
+                    Host();
                     break;
                 case "join":
-                    ulong lobby;
-                    if (args.Length < 2 || !ulong.TryParse(args[1], out lobby)) { ModConsole.Error("uso: duo_net join <código do lobby>"); return; }
-                    Guarded(() => NetSession.Start(SteamTransport.Join(lobby), Vector3.zero));
-                    NetHud.Visible = true;
+                    if (args.Length < 2 || !Join(args[1])) { ModConsole.Error("uso: duo_net join <código do lobby>"); return; }
                     break;
                 case "invite":
-                    var steam = NetSession.Current?.Transport as SteamTransport;
-                    if (steam == null) { ModConsole.Error("[MSC Duo] crie um lobby antes com 'duo_net host'"); return; }
-                    steam.OpenInviteOverlay();
+                    if (!Invite()) { ModConsole.Error("[MSC Duo] crie um lobby antes com 'duo_net host'"); return; }
                     break;
                 case "loopback":
                     var ping = Arg(args, 1, 80f);
@@ -57,6 +51,29 @@ namespace MscDuo.Tools
                     ModConsole.Error(Help);
                     break;
             }
+        }
+
+        internal static void Host()
+        {
+            Guarded(() => NetSession.Start(SteamTransport.Host(), Vector3.zero));
+            NetHud.Visible = true;
+        }
+
+        internal static bool Join(string code)
+        {
+            ulong lobby;
+            if (!ulong.TryParse(code.Trim(), out lobby)) return false;
+            Guarded(() => NetSession.Start(SteamTransport.Join(lobby), Vector3.zero));
+            NetHud.Visible = true;
+            return true;
+        }
+
+        internal static bool Invite()
+        {
+            var steam = NetSession.Current?.Transport as SteamTransport;
+            if (steam == null) return false;
+            steam.OpenInviteOverlay();
+            return true;
         }
 
         static void Guarded(System.Action start)
