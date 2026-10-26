@@ -121,6 +121,8 @@ namespace MscDuo.Sync
 
         internal static string CurrentBlock => color != null ? color.ActiveStateName : "";
 
+        internal static int CurrentWeather => weather != null ? Int(weather, "WeatherType") : -1;
+
         static void Write(BinaryWriter w)
         {
             w.Write(color.ActiveStateName ?? "");

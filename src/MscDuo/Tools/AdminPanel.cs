@@ -29,6 +29,13 @@ namespace MscDuo.Tools
             new[] { "rco_ruscko", "Ruscko" }, new[] { "boat", "Barco" }, new[] { "combine", "Colheitadeira" },
             new[] { "ram1500", "Dodge Ram" }, new[] { "campershell", "Capota da Ram" },
         };
+        static readonly string[][] Places =
+        {
+            new[] { "REPAIRSHOP", "Oficina do Fleetari" }, new[] { "STORE", "Loja do Teimo" },
+            new[] { "INSPECTION", "Inspeção" }, new[] { "DANCEHALL", "Salão de dança" },
+            new[] { "COTTAGE", "Chalé" }, new[] { "CABIN", "Cabana" },
+            new[] { "LANDFILL", "Lixão" }, new[] { "DRAGRACE", "Pista de arrancada" },
+        };
         static readonly Dictionary<Transform, FsmFloat[]> tanks = new Dictionary<Transform, FsmFloat[]>();
         static readonly string[] WeatherLabels = { "Sol", "Chuva", "Tempestade" };
 
@@ -388,19 +395,55 @@ namespace MscDuo.Tools
         {
             var player = Player();
             if (player == null) { GUILayout.Label("Jogador não encontrado."); return; }
+            GUILayout.Label("Casas");
+            GUILayout.BeginHorizontal();
             if (GUILayout.Button("Casa 1") && HouseCloner.Original != null) Teleport(player, HouseCloner.Original.transform.position, "casa 1");
             if (GUILayout.Button("Casa 2") && SatsumaCloner.Clone != null) Teleport(player, SatsumaCloner.Clone.transform.position + SatsumaCloner.Clone.transform.right * 2.5f, "casa 2");
+            GUI.enabled = Warehouse.LightSwitch != null;
+            if (GUILayout.Button("Galpão") && Warehouse.LightSwitch != null) Teleport(player, Warehouse.LightSwitch.position + Vector3.forward * 1.2f - Vector3.up * 1.3f, "galpão");
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
             var remote = NetSession.Current != null ? NetSession.Current.RemotePosition : null;
             GUI.enabled = remote.HasValue;
             if (GUILayout.Button("Até o outro jogador") && remote.HasValue) Teleport(player, remote.Value + Vector3.right * 1.5f, "o outro jogador");
             GUI.enabled = true;
+
+            GUILayout.Space(8f);
+            GUILayout.Label("Lugares do mapa");
+            for (int i = 0; i < Places.Length; i += 2)
+            {
+                GUILayout.BeginHorizontal();
+                for (int j = i; j < i + 2 && j < Places.Length; j++)
+                    if (GUILayout.Button(Places[j][1])) GoToPlace(player, Places[j]);
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        static void GoToPlace(Transform player, string[] place)
+        {
+            var root = SatsumaCloner.FindRoot(place[0]);
+            if (root == null) { status = place[1] + " não encontrado neste save"; return; }
+            Teleport(player, root.transform.position, place[1].ToLowerInvariant());
         }
 
         static void Teleport(Transform player, Vector3 target, string label)
         {
             if (InVehicle(player)) { status = "saia do veículo antes de teleportar."; return; }
-            player.position = target + Vector3.up * 1.5f;
+            player.position = Ground(player, target);
             status = $"teleportado para {label}";
+        }
+
+        static Vector3 Ground(Transform player, Vector3 target)
+        {
+            var best = float.MaxValue;
+            var spot = target + Vector3.up * 1.5f;
+            foreach (var hit in Physics.RaycastAll(target + Vector3.up * 2f, Vector3.down, 8f))
+            {
+                if (hit.collider.isTrigger || hit.collider.transform.IsChildOf(player) || hit.distance >= best) continue;
+                best = hit.distance;
+                spot = hit.point + Vector3.up * 1f;
+            }
+            return spot;
         }
 
         static void WorldTab()
@@ -409,15 +452,19 @@ namespace MscDuo.Tools
             var guest = session != null && session.Connected && !session.Transport.IsHost;
             if (guest) GUILayout.Label("Só o anfitrião muda a hora e o clima.");
             GUI.enabled = !guest;
-            GUILayout.Label($"Hora (agora: {TimeSync.CurrentBlock})");
+            var block = TimeSync.CurrentBlock;
+            GUILayout.Label($"Hora (agora: {(block.Length > 0 ? block : "-")})");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < Blocks.Length; i++)
-                if (GUILayout.Button(BlockLabels[i])) status = TimeSync.SetBlock(Blocks[i]) ? $"hora: {BlockLabels[i]}" : "relógio não encontrado";
+                if (GUILayout.Toggle(block == Blocks[i], BlockLabels[i], "Button") && block != Blocks[i])
+                    status = TimeSync.SetBlock(Blocks[i]) ? $"hora: {BlockLabels[i]}" : "relógio não encontrado";
             GUILayout.EndHorizontal();
-            GUILayout.Label("Clima");
+            var weather = TimeSync.CurrentWeather;
+            GUILayout.Label($"Clima (agora: {(weather >= 0 && weather < WeatherLabels.Length ? WeatherLabels[weather] : "-")})");
             GUILayout.BeginHorizontal();
             for (int i = 0; i < WeatherLabels.Length; i++)
-                if (GUILayout.Button(WeatherLabels[i])) status = TimeSync.SetWeather(i) ? $"clima: {WeatherLabels[i]}" : "nuvens não encontradas";
+                if (GUILayout.Toggle(weather == i, WeatherLabels[i], "Button") && weather != i)
+                    status = TimeSync.SetWeather(i) ? $"clima: {WeatherLabels[i]}" : "nuvens não encontradas";
             GUILayout.EndHorizontal();
             GUI.enabled = true;
         }
