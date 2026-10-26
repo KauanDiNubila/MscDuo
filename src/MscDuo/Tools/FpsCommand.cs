@@ -29,6 +29,7 @@ namespace MscDuo.Tools
         static int[] fsmSeen;
         static readonly Dictionary<PlayMakerFSM, int> fsmGroups = new Dictionary<PlayMakerFSM, int>();
         static readonly Dictionary<string, long> modTicks = new Dictionary<string, long>();
+        static readonly Stack<long> starts = new Stack<long>();
 
         class Group
         {
@@ -48,12 +49,27 @@ namespace MscDuo.Tools
             var seconds = 4f;
             if (args.Length > 0 && (!DevCommands.TryFloat(args[0], out seconds) || seconds < 1f)) { ModConsole.Error(Help); return; }
             if (running) { ModConsole.Warning("[MSC Duo] duo_fps já está medindo."); return; }
-            DevCommands.StartRoutine(Measure(seconds));
+            DevCommands.StartRoutine(Guarded(seconds));
+        }
+
+        static IEnumerator Guarded(float seconds)
+        {
+            running = true;
+            try
+            {
+                var measure = Measure(seconds);
+                while (measure.MoveNext()) yield return measure.Current;
+            }
+            finally
+            {
+                running = false;
+                fsmTicks = null;
+                starts.Clear();
+            }
         }
 
         static IEnumerator Measure(float seconds)
         {
-            running = true;
             groups = BuildGroups();
             var harmony = HarmonyInstance.Create(HarmonyId);
             harmony.UnpatchAll(HarmonyId);
@@ -74,6 +90,7 @@ namespace MscDuo.Tools
             fsmSeen = new int[groups.Count + 1];
             fsmGroups.Clear();
             modTicks.Clear();
+            starts.Clear();
             var patched = Patch(harmony);
             var profiled = new List<float>();
             sample = Sample(seconds, profiled);
@@ -109,7 +126,6 @@ namespace MscDuo.Tools
             ModConsole.Print(string.Format(Inv, "<color=orange>[MSC Duo]</color> FPS normal {0:0.0} (1% piores {1:0.0}).", normal, Worst(baseline)));
             foreach (var gain in gains) ModConsole.Print(string.Format(Inv, "  sem {0}: {1:+0.0;-0.0} FPS", gain.Key, gain.Value));
             ModConsole.Print($"<color=orange>[MSC Duo]</color> relatório completo em {file}");
-            running = false;
         }
 
         static List<Group> BuildGroups()
@@ -197,20 +213,22 @@ namespace MscDuo.Tools
             }
         }
 
-        static void Prefix(out long __state) => __state = Stopwatch.GetTimestamp();
+        static void Prefix() => starts.Push(Stopwatch.GetTimestamp());
 
-        static void FsmPostfix(PlayMakerFSM __instance, long __state)
+        static long Elapsed() => starts.Count > 0 ? Stopwatch.GetTimestamp() - starts.Pop() : 0L;
+
+        static void FsmPostfix(PlayMakerFSM __instance)
         {
-            var elapsed = Stopwatch.GetTimestamp() - __state;
+            var elapsed = Elapsed();
             if (fsmTicks == null || __instance == null) return;
             int group;
             if (!fsmGroups.TryGetValue(__instance, out group)) fsmGroups[__instance] = group = GroupOf(__instance.transform);
             fsmTicks[group] += elapsed;
         }
 
-        static void ModPostfix(object __instance, long __state)
+        static void ModPostfix(object __instance)
         {
-            var elapsed = Stopwatch.GetTimestamp() - __state;
+            var elapsed = Elapsed();
             var name = __instance != null ? __instance.GetType().Name : "?";
             long total;
             modTicks.TryGetValue(name, out total);
