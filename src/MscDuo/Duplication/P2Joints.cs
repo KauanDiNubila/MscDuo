@@ -10,6 +10,7 @@ namespace MscDuo.Duplication
     {
         static readonly float[] Passes = { 3f, 6f, 10f, 20f, 40f };
         const float Interval = 10f;
+        const int QuietPasses = 6;
 
         float started;
         int pass;
@@ -18,6 +19,7 @@ namespace MscDuo.Duplication
         int relinked;
         int sounds;
         int freed;
+        int quiet;
         readonly Dictionary<PlayMakerFSM, int> attempts = new Dictionary<PlayMakerFSM, int>();
         readonly List<string> reassembled = new List<string>();
         const int MaxAttempts = 3;
@@ -51,8 +53,14 @@ namespace MscDuo.Duplication
             if (fixedNow > 0)
                 ModConsole.Print($"<color=orange>[MSC Duo]</color> Satsuma 2: {fixedNow} peças montadas no save mas soltas foram remontadas pelo gatilho do jogo ({string.Join(", ", reassembled.ToArray())}).");
             if (report != null) Save(report, pass);
-            if (orphans + relinked + sounds + freed > before || pass == 1)
+            var changed = orphans + relinked + sounds + freed > before;
+            if (changed || pass == 1)
                 ModConsole.Print($"<color=orange>[MSC Duo]</color> juntas da Satsuma 2: {orphans} duplicadas removidas, {relinked} religadas, {freed} presas ao mundo na carroceria soltas, {sounds} sons presos desligados.");
+            if (pass < Passes.Length) return;
+            quiet = changed || fixedNow > 0 ? 0 : quiet + 1;
+            if (quiet < QuietPasses) return;
+            ModConsole.Print($"<color=orange>[MSC Duo]</color> juntas da Satsuma 2 estáveis; varredura encerrada depois de {pass} passadas.");
+            Destroy(gameObject);
         }
 
         int Reassemble()
