@@ -66,7 +66,7 @@ namespace MscDuo
 
         void OnPostLoad()
         {
-            House2Fridge.Patch();
+            HarmonyPatches.Apply();
             HouseCloner.Spawn();
             try { Warehouse.Spawn(); }
             catch (System.Exception e) { ModConsole.Error($"[MSC Duo] galpão falhou: {e}"); }

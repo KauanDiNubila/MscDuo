@@ -1,8 +1,6 @@
 using System.Collections.Generic;
-using System.Reflection;
 using Harmony;
 using HutongGames.PlayMaker.Actions;
-using MSCLoader;
 using UnityEngine;
 
 namespace MscDuo.Duplication
@@ -13,21 +11,6 @@ namespace MscDuo.Duplication
 
         internal static Transform Point;
         internal static readonly List<Transform> Extras = new List<Transform>();
-        static bool patched;
-
-        internal static void Patch()
-        {
-            if (patched) return;
-            try
-            {
-                HarmonyInstance.Create("MscDuo.Fridge").PatchAll(Assembly.GetExecutingAssembly());
-                patched = true;
-            }
-            catch (System.Exception e)
-            {
-                ModConsole.Warning($"[MSC Duo] geladeira da casa 2 não vai gelar: {e.Message}");
-            }
-        }
 
         [HarmonyPatch(typeof(GetDistance), "DoGetDistance")]
         static class GetDistancePatch
