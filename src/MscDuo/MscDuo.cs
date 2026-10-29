@@ -93,13 +93,28 @@ namespace MscDuo
             Sync.SleepSync.Draw();
         }
 
+        static System.Reflection.FieldInfo consoleField;
+        static System.Reflection.FieldInfo containerField;
+
+        static bool Typing()
+        {
+            if (AdminPanel.Open) return true;
+            if (consoleField == null) consoleField = typeof(ModConsole).GetField("console", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            var view = consoleField != null ? consoleField.GetValue(null) : null;
+            if (view == null) return false;
+            if (containerField == null) containerField = view.GetType().GetField("viewContainer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            var container = containerField != null ? containerField.GetValue(view) as GameObject : null;
+            return container != null && container.activeSelf;
+        }
+
         void OnUpdate()
         {
             PlayerContext.Tick();
-            Sync.Passenger.Tick(passengerKey != null && passengerKey.GetKeybindDown());
+            var typing = Typing();
+            Sync.Passenger.Tick(!typing && passengerKey != null && passengerKey.GetKeybindDown());
             if (adminKey != null && adminKey.GetKeybindDown()) AdminPanel.Toggle();
             AdminPanel.Tick();
-            if (GateKey != null && GateKey.GetKeybindDown()) WarehouseGates.Remote();
+            if (!typing && GateKey != null && GateKey.GetKeybindDown()) WarehouseGates.Remote();
             if (NetSession.Current == null) Sync.SleepSync.Tick(Time.realtimeSinceStartup, false, null);
             if (dumpKey != null && dumpKey.GetKeybindDown())
                 SceneDumper.DumpDefault();
